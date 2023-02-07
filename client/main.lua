@@ -34,12 +34,30 @@ RegisterNetEvent('redemrp_charselect:SpawnCharacter', function(new)
     TriggerServerEvent("redemrp_respawn:CheckPos")
 end)
 
+local isHidden = false
+
+Citizen.CreateThread(function()
+    while true do
+        local isRadarHidden = IsRadarHidden()
+
+        if isRadarHidden and not isHidden then
+            SendNUIMessage({type = 2})
+            isHidden = true
+        elseif not isRadarHidden and isHidden then
+            SendNUIMessage({type = 3})
+            isHidden = false
+        end
+        Citizen.Wait(100)
+    end
+end)
+
+local loadingscreenremoved = false
+
 RegisterNetEvent('redemrp_charselect:removeLoadingScreen', function()
-    DoScreenFadeIn(500)
-    SendNUIMessage({
-        loading = false
-    })
-    OpenCharacterMenu()
+    if not loadingscreenremoved then
+        OpenCharacterMenu()
+        loadingscreenremoved = true
+    end
 end)
 
 OpenCharacterMenu = function()
@@ -58,9 +76,10 @@ OpenCharacterMenu = function()
     end
     table.insert(elements, {label = "<strong>Create a New Character</strong>", desc = "Create a new character.", image="items/character_new.png", value = "new"})
     MenuData.Open('default', GetCurrentResourceName(), 'charselect', {
-        title    = "REDEM:RP 2022",
+        title    = "REDEM:RP 2023",
         subtext  = "Character Selection",
         align    = 'top-right',
+        opacity  = '0.95',
         elements = elements,
     },
     function(data, menu)
@@ -82,9 +101,10 @@ OpenCharacterMenu = function()
                 {label = "Delete Character", desc = "Delete this character?", image="items/charsel_delete.png", value = "delete"}
             }
             MenuData.Open('default', GetCurrentResourceName(), 'charselect2', {
-                title    = "REDEM:RP 2022",
+                title    = "REDEM:RP",
                 subtext  = "Character Selection",
                 align    = 'top-right',
+                opacity  = '0.95',
                 elements = elements,
             },
             function(data, menu)
@@ -97,26 +117,44 @@ OpenCharacterMenu = function()
                         {label = "Cancel", desc = "Cancel deletion", image="items/charsel_cancel.png", value = "cancel"}
                     }
                     MenuData.Open('default', GetCurrentResourceName(), 'charselect3', {
-                        title    = "REDEM:RP 2022",
+                        title    = "REDEM:RP",
                         subtext  = "Delete Character",
                         align    = 'top-right',
+                        opacity  = '0.95',
                         elements = elements,
                     },
                     function(data, menu)
                         if data.current.value == "confirm" then
-                            MenuData.CloseAll()
-                            DoScreenFadeOut(500)
-                            Wait(500)
                             local charId = tonumber(SelectingChar)
-                            TriggerServerEvent('redemrp_charselect:deleteCharacter', charId)
-                            Citizen.Wait(1000)
-                            TriggerServerEvent('redemrp_charselect:getCharacters')
-                            for v, k in pairs (characters) do
-                                DeletePed(k)
-                                characters[v] = nil
-                                PlayerSkins[v] = nil
-                                PlayerClothes[v] = nil
-                                PlayerSex[v] = nil
+                            MenuData.CloseAll()
+
+                            AddTextEntry("FMMC_MPM_TYP71", "\"confirm\" to delete your character ("..CharsList[charId].firstname.." "..CharsList[charId].lastname.."), ESC to cancel")
+                            DisplayOnscreenKeyboard(0, "FMMC_MPM_TYP71", "", "", "", "", "", 30)
+                            while (UpdateOnscreenKeyboard() == 0) do
+                                DisableAllControlActions(0)
+                                Citizen.Wait(0)
+                            end
+                            if (GetOnscreenKeyboardResult()) then
+                                kbdRes = GetOnscreenKeyboardResult()
+                            else
+                                return OpenCharacterMenu()
+                            end
+                            
+                            if #(kbdRes) >= 1 then
+                                if kbdRes == "confirm" then
+                                    DoScreenFadeOut(500)
+                                    Wait(500)
+                                    TriggerServerEvent('redemrp_charselect:deleteCharacter', charId)
+                                    for v, k in pairs (characters) do
+                                        DeletePed(k)
+                                        characters[v] = nil
+                                        PlayerSkins[v] = nil
+                                        PlayerClothes[v] = nil
+                                        PlayerSex[v] = nil
+                                    end
+                                else
+                                    return OpenCharacterMenu()
+                                end
                             end
                         elseif data.current.value == "cancel" then
                             menu.close()
@@ -184,6 +222,12 @@ OpenCharacterMenu = function()
             DoSkyEffect()
         end
     end)
+    Wait(250)
+    DoScreenFadeIn(500)
+    Wait(500)
+    SendNUIMessage({
+        loading = false
+    })
 end
 
 Citizen.CreateThread(function()
@@ -199,14 +243,12 @@ end)
 
 RegisterNetEvent('redemrp_charselect:openSelectionMenu', function(characters,skins,clothes)
     Citizen.CreateThread(function()
-        CharScene = math.random(1,#Config.CharScenes)
+        --CharScene = math.random(1,#Config.CharScenes)
+        --Config.CharScenes[CharScene] = shuffle(Config.CharScenes[CharScene])
+        CharScene = 4
         Config.CharScenes[CharScene] = shuffle(Config.CharScenes[CharScene])
         SetEntityAlpha(PlayerPedId(), 0)
         CharsList = characters
-        SendNUIMessage({
-            loading = true,
-            list = characters
-        })
         local ped = PlayerPedId()
         SetEntityCoords(PlayerPedId(), 1.505, 1015.63, 202.4088)
         FreezeEntityPosition(PlayerPedId(), true)
@@ -247,10 +289,6 @@ RegisterNetEvent('redemrp_charselect:openSelectionMenu', function(characters,ski
         SetCamActive(cam, true)
         RenderScriptCams(true, false, 1, true, true)
         CanChangeCamera = true
-
-        if #characters == 0 then
-            DoSkyEffect()
-        end
         Wait(250)
         TriggerEvent("redemrp_charselect:removeLoadingScreen")
     end)
@@ -311,6 +349,7 @@ function createCharacters()
                 SetEntityCanBeDamagedByRelationshipGroup(characters[i], false, GetHashKey("PLAYER"))
                 TriggerEvent("RedEM:client:ApplySkin", PlayerSkins[i] , characters[i], PlayerClothes[i])
 
+                FreezeEntityPosition(characters[i], true)
                 if not Config.CharScenes[CharScene][i].Scenario then
                     if IsPedMale(characters[i]) then
                         TaskStartScenarioInPlace(characters[i], Config.CharScenes[CharScene][i].ScenarioMale, -1, true, false, false, false)
@@ -331,12 +370,14 @@ function FindScenarioOfTypeHash(x, y, z, hash, dist, p1, p2)
 end
 
 Citizen.CreateThread(function()
-    ShutdownLoadingScreen()
+    DoScreenFadeOut(100)
     Wait(100)
     SendNUIMessage({
         version = RedEM.Version,
     })
-    Wait(4000)
+    Wait(100)
+    ShutdownLoadingScreen()
+    Wait(7000)
     TriggerServerEvent('redemrp_charselect:getCharacters')
 end)
 
@@ -373,6 +414,11 @@ StopSkyCam = function()
     DestroyAllCams()
 end
 
+RegisterNetEvent("redemrp_charselect:characterRemoved", function()
+    loadingscreenremoved = false
+    TriggerServerEvent('redemrp_charselect:getCharacters')
+end)
+
 RegisterCommand("logout", function(source, args)
     RedEM.TriggerCallback("redemrp_respawn:IsPlayerDead", function(isDead)
         if not isDead then
@@ -382,15 +428,17 @@ RegisterCommand("logout", function(source, args)
                 StopSkyCam()
                 Citizen.InvokeNative(0x1B83C0DEEBCBB214, PlayerPedId())
                 RemoveAllPedWeapons(PlayerPedId(), true, true)
+                loadingscreenremoved = false
                 TriggerEvent("redemrp_inventory:client:ResetWeapons")
                 TriggerServerEvent("redemrp:PlayerLogout")
                 TriggerServerEvent("redemrp_bossmenu:server:LogoutOffDuty")
                 TriggerEvent("redemrp_respawn:client:StopSavingPosition")
+                TriggerEvent("redemrp_sisika:client:Logout")
                 Citizen.Wait(1000)
                 TriggerServerEvent('redemrp_charselect:getCharacters')
             end)
         else
-            RedEM.Functions.NotifyRight("You can't logout while you're dead.", 3000)
+            RedEM.Functions.NotifyRight( "You can't logout while you're dead.", 3000)
         end
     end)
 end)
@@ -435,11 +483,12 @@ RegisterNetEvent("redemrp_charselect:client:FinishSelection", function(new)
     end
 end)
 
+--[[
 RegisterNetEvent('rdr_creator:SkinLoaded', function(SkinData, Target, ClothesData)
     if Target ~= PlayerPedId() then
         TriggerEvent("redemrp_charselect:removeLoadingScreen")
     end
-end)
+end)]]
 
 RegisterNUICallback('newCharacter', function(data, cb)
     local function tchelper(first, rest)
@@ -460,6 +509,7 @@ RegisterNUICallback('cancelNew', function(data, cb)
     AnimpostfxStopAll()
     effectName = nil
     TriggerServerEvent('redemrp_charselect:getCharacters')
+    loadingscreenremoved = false
     for v, k in pairs (characters) do
         DeletePed(k)
 		characters[v] = nil
@@ -497,5 +547,4 @@ DoSkyEffect = function()
         effectName = "skytl_0600_01clear_nofade"
     end
     AnimpostfxPlay(effectName)
-    DoScreenFadeIn(500)
 end

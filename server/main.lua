@@ -39,12 +39,17 @@ RegisterServerEvent("redemrp_charselect:deleteCharacter", function(_charid)
             break
         end
     end
+    local timeout = 0
+    while id == nil and timeout < 10 do Wait(100) ; timeout = timeout + 1 end 
     MySQL.query('DELETE FROM characters WHERE `identifier` = @identifier AND `characterid`=@characterid;', {identifier = id, characterid=_charid})
     MySQL.query('DELETE FROM skins WHERE `identifier` = @identifier AND `charid`=@characterid;', {identifier = id, characterid=_charid})
     MySQL.query('DELETE FROM clothes WHERE `identifier` = @identifier AND `charid`=@characterid;', {identifier = id, characterid=_charid})
+    MySQL.query('DELETE FROM horses WHERE `identifier` = @identifier AND `charid`=@characterid;', {identifier = id, characterid=_charid})
     MySQL.query('DELETE FROM user_inventory WHERE `identifier` = @identifier AND `charid`=@characterid;', {identifier = id, characterid=_charid})
+    MySQL.query('DELETE FROM user_bills WHERE `owner` = @identifier AND `ownerCharId` = @characterid;', {identifier = id, characterid=_charid})
+    MySQL.query('DELETE FROM outfits WHERE `identifier` = @identifier AND `charid` = @characterid;', {identifier = id, characterid=_charid})
     MySQL.query('DELETE FROM stashes WHERE `stashid` = @stashid;', {stashid = "bankstash_"..id.."_".._charid})
     MySQL.query('DELETE FROM stashes WHERE `stashid` = @stashid;', {stashid = "campstorage_"..id.."_".._charid})
 
-    TriggerEvent("redemrp_charselect:characterRemoved", _source, id, _charid)
+    TriggerClientEvent("redemrp_charselect:characterRemoved", _source)
 end)
